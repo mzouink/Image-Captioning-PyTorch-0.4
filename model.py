@@ -23,7 +23,7 @@ class EncoderCNN(nn.Module):
 
 class DecoderRNN(nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size,  n_layers=1):
-        super().__init__()
+        super(DecoderRNN, self).__init__()
         
         ## TODO: define the LSTM
         self.embed = nn.Embedding(vocab_size, embed_size)
@@ -35,16 +35,18 @@ class DecoderRNN(nn.Module):
         self.hidden = (torch.zeros(1,1,hidden_size),torch.zeros(1,1,hidden_size))
     
     def forward(self, features, captions):
-        captions = self.embed(captions[:,:-1])
+#         captions = self.embed(captions[:,:-1])
+        captions = self.embed(captions)
         
         features = features.unsqueeze(1)
         
         inputs = torch.cat((features,captions),1)
         
-        lstm_output,_ = self.lstm(inputs,None)
+        lstm_output,_ = self.lstm(inputs)
         
-        outputs = self.fc(lstm_output)
+        outputs = self.fc(lstm_output[:,:-1,:])
 
+#         return  outputs[:,:-1,:]
         return  outputs
 
     def sample(self, inputs, states=None, max_len=20):
