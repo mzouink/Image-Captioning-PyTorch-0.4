@@ -4,4 +4,5 @@ __pycache__
 error.log
 back
 project2.zip
-
+*.html
+.gitignore
