@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+import torch.nn.functional as F
 
 
 class EncoderCNN(nn.Module):
@@ -13,49 +14,52 @@ class EncoderCNN(nn.Module):
         modules = list(resnet.children())[:-1]
         self.resnet = nn.Sequential(*modules)
         self.embed = nn.Linear(resnet.fc.in_features, embed_size)
+        self.bn = nn.BatchNorm1d(embed_size, momentum=0.01)
 
     def forward(self, images):
         features = self.resnet(images)
         features = features.view(features.size(0), -1)
-        features = self.embed(features)
+        features = self.bn(self.embed(features))
         return features
     
 
 class DecoderRNN(nn.Module):
-    def __init__(self, embed_size, hidden_size, vocab_size,  n_layers=1):
+    def __init__(self, embed_size, hidden_size, vocab_size, num_layers=1):
         super(DecoderRNN, self).__init__()
-        
-        ## TODO: define the LSTM
-        self.embed = nn.Embedding(vocab_size, embed_size)
-        self.lstm = nn.LSTM(embed_size, hidden_size, n_layers, batch_first=True)
-        
-        ## TODO: define the final, fully-connected output layer
-        self.fc = nn.Linear(hidden_size, vocab_size)
-        
-        self.hidden = (torch.zeros(1,1,hidden_size),torch.zeros(1,1,hidden_size))
-    
-    def forward(self, features, captions):
-#         captions = self.embed(captions[:,:-1])
-        captions = self.embed(captions)
-        
-        features = features.unsqueeze(1)
-        
-        inputs = torch.cat((features,captions),1)
-        
-        lstm_output,_ = self.lstm(inputs)
-        
-        outputs = self.fc(lstm_output[:,:-1,:])
 
-#         return  outputs[:,:-1,:]
-        return  outputs
+        self.embed = nn.Embedding(vocab_size, embed_size)
+        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
+        self.hidden2word = nn.Linear(hidden_size, vocab_size)
+
+    def forward(self, features, captions):
+        # ignore last output, since last input character is <end>
+        # so, we should get <end>, <end> at the end of output
+        embed = self.embed(captions[:,:-1])
+
+        embed = torch.cat((features.unsqueeze(1), embed), 1)
+
+        # don't need to use hidden state here,
+        # since all captions are handled
+        # also, don't need to return hidden state, because all captions are handled 
+        lstm_out, _ = self.lstm(embed)
+
+        # get the scores for the most likely tag for a word
+        tag_outputs = self.hidden2word(lstm_out)
+        # don't need to use softmax here, since model will learn better and faster without it
+        return tag_outputs
 
     def sample(self, inputs, states=None, max_len=20):
         " accepts pre-processed image tensor (inputs) and returns predicted sentence (list of tensor ids of length max_len) "
         result = []
+
         for i in range(max_len):
-            outputs, hidden = self.lstm(inputs, states)
-            outputs = self.fc(outputs.squeeze(1))
-            target_index = outputs.max(1)[1]
-            result.append(target_index.item())
-            inputs = self.embed(target_index).unsqueeze(1)
+            lstm_out, states = self.lstm(inputs, states)
+            tag_output = self.hidden2word(lstm_out)
+
+            # don't need softmax, since eventually after it argmax will return the same index
+            predicted = torch.argmax(tag_output, dim=-1)
+
+            result.append(predicted[0,0].item())
+            inputs = self.embed(predicted)
+
         return result
