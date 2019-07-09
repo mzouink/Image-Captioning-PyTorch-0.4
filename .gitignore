@@ -1,6 +1,7 @@
 **/*.ipynb_checkpoints/
 .ipynb_checkpoints/
 __pycache__/
-.gitignore
 error.log
 back/
+project2.zip
+.gitignore
